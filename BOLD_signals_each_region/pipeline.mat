@@ -1,0 +1,366 @@
+%Descarto los sujetos que no aparecen en el listado de los datos: 21, 29, 56
+
+
+num_sujetos = 68;
+num_regiones = 80;
+max_lag = 50; % Máximo retardo para calcular autocorrelación
+num_bins = 209;
+matrix_todo = zeros(num_sujetos,num_bins,num_regiones);
+
+m = zeros(num_sujetos, num_regiones);      % Matriz para almacenar medias
+vari = zeros(num_sujetos, num_regiones);   % Matriz para almacenar variabilidades
+autocorrs = zeros(max_lag*2+1, num_regiones, num_sujetos); % Matriz para almacenar autocorrelaciones
+fwhm = zeros(num_regiones, num_sujetos); % Ancho a media altura (FWHM)
+
+for i = 1:71
+    
+    if i < 21 
+
+        % Formatea el número con 3 dígitos
+        num_str = sprintf('%03d', i);  
+        % Construye el nombre del archivo
+        nombre_archivo = ['ROISignals_Sub_', num_str, '.mat'];
+            
+        % Carga el archivo .mat
+        datos_cargados = load(nombre_archivo);   
+        A = datos_cargados.ROISignals;
+        matrix_todo(i,:,:) = A;     
+    
+        % Cálculos estadísticos
+        media_temporal = mean(A, 1);      % Media por columnas (regiones)
+        varianza_temporal = var(detrend(A), 0, 1); % Varianza muestral por columnas
+          
+        % Almacena resultados
+        m(i, :) = media_temporal;
+        %vari(i, :) = sqrt(varianza_temporal)./media_temporal;
+        vari(i,:) = sqrt(varianza_temporal);
+
+        for region = 1:num_regiones
+            % Serie temporal para esta región
+            serie_temporal = detrend(A(:, region)); 
+            
+            [autocorr, lags] = xcorr(serie_temporal - mean(serie_temporal), max_lag, 'coeff');
+            autocorrs(:, region, i) = autocorr;
+            
+            fwhm(region, i) = fwhm_autocorr(autocorr, lags);
+       end
+        
+        % Limpia la variable A para la siguiente iteración
+        clear A;
+    end
+
+    if i> 21 && i < 29
+
+        num_str = sprintf('%03d', i);  
+        nombre_archivo = ['ROISignals_Sub_', num_str, '.mat'];
+
+        datos_cargados = load(nombre_archivo);   
+        A = datos_cargados.ROISignals;
+
+        media_temporal = mean(A, 1);      % Media por columnas (regiones)
+        varianza_temporal = var(detrend(A), 0, 1); % Varianza muestral por columnas
+        m(i-1, :) = media_temporal;
+        vari(i-1, :) = sqrt(varianza_temporal);
+
+        for region = 1:num_regiones
+            serie_temporal = detrend(A(:, region)); 
+
+            [autocorr, lags] = xcorr(serie_temporal - mean(serie_temporal), max_lag, 'coeff');
+            autocorrs(:, region, i-1) = autocorr;
+
+            fwhm(region, i-1) = fwhm_autocorr(autocorr, lags);
+       end
+
+         % Limpio la variable A para la siguiente iteración
+         clear A;
+
+    end
+
+    if i > 29 && i < 56
+
+        num_str = sprintf('%03d', i);  
+        nombre_archivo = ['ROISignals_Sub_', num_str, '.mat'];
+
+        datos_cargados = load(nombre_archivo);   
+        A = datos_cargados.ROISignals;
+
+
+        media_temporal = mean(A, 1);      % Media por columnas (regiones)
+        varianza_temporal = var(detrend(A), 0, 1); % Varianza muestral por columnas
+
+        m(i-2, :) = media_temporal;
+        vari(i-2, :) = sqrt(varianza_temporal);
+
+        for region = 1:num_regiones
+            serie_temporal = detrend(A(:, region)); 
+
+            [autocorr, lags] = xcorr(serie_temporal - mean(serie_temporal), max_lag, 'coeff');
+            autocorrs(:, region, i-2) = autocorr;
+
+            fwhm(region, i-2) = fwhm_autocorr(autocorr, lags);
+
+       end
+
+
+         % Limpia la variable A para la siguiente iteración
+        clear A;
+
+    end
+
+    if i > 56
+
+        num_str = sprintf('%03d', i);  
+        nombre_archivo = ['ROISignals_Sub_', num_str, '.mat'];
+
+        datos_cargados = load(nombre_archivo);   
+        A = datos_cargados.ROISignals;
+
+
+        media_temporal = mean(A, 1);      % Media por columnas (regiones)
+        varianza_temporal = var(detrend(A), 0, 1); % Varianza muestral por columnas
+
+        % Almacena resultados
+        m(i-3, :) = media_temporal;
+        vari(i-3, :) = sqrt(varianza_temporal);
+
+        for region = 1:num_regiones
+            % Serie temporal para esta región
+            serie_temporal = detrend(A(:, region)); 
+
+            [autocorr, lags] = xcorr(serie_temporal - mean(serie_temporal), max_lag, 'coeff');
+            autocorrs(:, region, i-3) = autocorr;
+
+            fwhm(region, i-3) = fwhm_autocorr(autocorr, lags);
+
+       end
+
+
+        clear A;
+
+    end
+end
+
+
+nombre_hdf5 = 'matrix_todo.h5';
+if exist(nombre_hdf5, 'file')
+    delete(nombre_hdf5);
+end
+
+h5create(nombre_hdf5, '/matrix_todo', size(matrix_todo));
+
+h5write(nombre_hdf5, '/matrix_todo', matrix_todo);
+
+disp('Guardado');
+
+
+%% ANALISIS DE SUJETOS
+
+%MEDIAS
+
+[regiones, sujetos] = meshgrid(1:80, 1:68);
+
+custom_colormap = [
+    linspace(1, 0.8, 256)'    % Rojos más claros (de blanco a rojo claro)
+    linspace(1, 0.2, 256)'    % Verdes más claros
+    linspace(1, 0.2, 256)'    % Azules más claros
+];
+
+% O usar combinaciones predefinidas más claras
+light_parula = parula; 
+light_parula = light_parula + (1 - light_parula)*0.3; % Aclarar colores
+light_parula(light_parula > 1) = 1; % Asegurar valores válidos
+
+% Configuración óptima para tu caso específico
+fig = figure('Color', 'white', 'Position', [100, 100, 1200, 800]);
+
+% Gráfico 3D
+ax1 = subplot(2,1,1);
+s = surf(ax1, regiones, sujetos, m, 'EdgeColor', 'none');
+colormap(ax1, light_parula);
+cbar1 = colorbar(ax1);
+cbar1.Label.String = 'Valor Medio';
+title('Medias Temporales (colores claros)');
+% Configuración de ejes 3D
+xlabel(ax1, 'Regiones (1-80)', 'FontSize', 10);
+ylabel(ax1, 'Sujetos (1-68)', 'FontSize', 10);
+zlabel(ax1, 'Valor Medio', 'FontSize', 10);
+title(ax1, 'Medias Temporales 3D', 'FontSize', 12);
+view(30, 30);
+grid on;
+
+% Mapa de calor 2D
+ax2 = subplot(2,1,2);
+imagesc(ax2, m);
+
+% Configuración de ejes 2D
+xlabel(ax2, 'Regiones', 'FontSize', 10);
+ylabel(ax2, 'Sujetos', 'FontSize', 10);
+title(ax2, 'Mapa de Calor 2D', 'FontSize', 12);
+
+colormap(ax2, flipud(pink)); % Pink invertido da buenos colores pastel
+cbar2 = colorbar(ax2);
+cbar2.Label.String = 'Valor Medio';
+title('Mapa de Calor (alto contraste)');
+
+% Ajuste final
+brighten(0.1); % Aclarar ligeramente todos los colores
+
+
+figure(2)
+[prom_suje,idx_suje] = sort(mean(m,2));
+
+
+h = animatedline('Marker','o');
+x = prom_suje;
+y = 1:68;
+addpoints(h,x,y)
+title('Acumulada: muestra sujetos promediando sus regiones')
+title('Acumulada: muestra sujetos sin anomalías promediando sus regiones')
+xlabel('Actividad');
+ylabel('Sujetos');
+
+%intento eliminar los que son ceros
+% 
+% idx_suje_anormal = [idx_suje(1:7);idx_suje(37:38)]';
+% ginput(1);   % Espera hasta el click
+
+
+% 
+% figure(3)
+% 
+% 
+% h1 = animatedline('Marker','o');
+% x1 = prom_suje(8:36);
+% y1 = 1:29;
+% addpoints(h1,x1,y1)
+% title('Acumulada: muestra sujetos sin anomalías promediando sus regiones')
+% xlabel('Actividad');
+% ylabel('Sujetos');
+% ginput(1);   % Espera hasta el click
+
+
+%-------------------------------------------------------------------------------------------------------------
+%VARIABILIDAD 
+
+[prom_vari,idx_vari] = sort(mean(vari,2));
+
+figure(4)
+h = animatedline('Marker','o');
+x = prom_vari;
+y = 1:68;
+addpoints(h,x,y)
+title('Acumulada: muestra de variabilidad de sujetos promediando sus regiones')
+xlabel('Variabilidad');
+ylabel('Sujetos');
+
+%AUTOCORRELACION
+
+figure(6)
+
+[fwhm_promedio, idx_fwhm] = sort(mean(fwhm, 1, 'omitnan')); %recorre filas y promedia columnas
+figure;
+h1 = animatedline('Marker','o');
+x1 = fwhm_promedio;
+y1 = 1:68;
+addpoints(h1,x1,y1);
+title('Ancho a Media Altura (FWHM) por sujeto');
+xlabel('FWHM (muestras)');
+ylabel('Sujetos');
+grid on;
+
+
+ginput(1);   % Espera hasta el click
+
+
+
+%ANALISIS DE REGIONES
+%MEDIA
+
+figure(8)
+
+[prom_reg,idx_reg] = sort(mean(m,1));
+
+
+h = animatedline('Marker','o');
+x = prom_reg;
+y = 1:80;
+addpoints(h,x,y)
+title('Acumulada: muestra de actividad en regiones promediando sujetos')
+xlabel('Actividad');
+ylabel('Regiones');
+grid on;
+
+disp(kstest(prom_reg))
+
+ginput(1);   % Espera hasta el click
+
+
+%VARIABILIDAD
+
+
+figure(9)
+
+
+[prom_vari_reg,idx_vari_reg] = sort(mean(vari,1));
+
+
+h1 = animatedline('Marker','o');
+x1 = prom_vari_reg;
+y1 = 1:80;
+addpoints(h1,x1,y1)
+title('Acumulada: muestra de variabilidad de regiones promediando sujetos')
+xlabel('Variabilidad');
+ylabel('Regiones');
+
+% disp(kstest(prom_vari_reg))
+
+%AUTOCORRELACION
+
+[fwhm_promedio, idx_fwhm_1] = sort(mean(fwhm, 2, 'omitnan')); %recorre columnas y promedia filas
+
+
+figure(10)
+h1 = animatedline('Marker','o');
+x1 = fwhm_promedio;
+y1 = 1:80;
+addpoints(h1,x1,y1);
+title('Ancho a Media Altura (FWHM) por region');
+xlabel('FWHM (muestras)');
+ylabel('Rigiones');
+grid on;
+
+% disp(kstest(fwhm_promedio))
+ginput(1);   % Espera hasta el click
+save('acumulada_sujetos_HC.mat', 'm')
+save('varianza_sujetos_HC.mat', 'vari')
+save('fwmn_sujetos_HC.mat', 'fwhm')
+
+function width = fwhm_autocorr(acorr, lags)
+    % usa solo lags >= 0
+    ac = acorr(lags >= 0);
+    lg = lags(lags >= 0);
+
+    % valor máximo (en autocorrelación siempre está en lag=0)
+    [peak_val, peak_idx] = max(ac);
+
+    halfmax = peak_val / 2;
+
+    % diferencias con el valor mitad
+    diff_ac = ac - halfmax;
+
+    % buscar puntos donde cruza la mitad
+    idx = find(diff_ac < 0, 1);  % primer cruce hacia abajo
+
+    % si nunca baja → asignar ancho máximo posible
+    if isempty(idx)
+        width = lg(end) - lg(1);
+        return
+    end
+
+    % interpolación lineal con el punto anterior
+    x1 = lg(idx-1); x2 = lg(idx);
+    y1 = diff_ac(idx-1); y2 = diff_ac(idx);
+
+    % intersección con half-maximum
+    width = x1 - y1 * (x2 - x1) / (y2 - y1);
+end
